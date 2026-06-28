@@ -1,0 +1,6 @@
+{
+  "name": "恐龙英语拼写闯关小游戏",
+  "description": "专为三年级小学生设计的恐龙主题英语单词拼写闯关游戏，支持10关、155个核心词汇拼写训练、多重鼓励弹窗、即时语音朗读及精美奖励卡牌收集。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

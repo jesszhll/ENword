@@ -1,0 +1,29 @@
+@import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700;900&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Fredoka", "Noto Sans SC", system-ui, sans-serif;
+}
+
+body {
+  background-color: #F1F8E9; /* Natural Tones soft light green */
+  color: #33691E; /* Deep forest green */
+  font-family: var(--font-sans);
+}
+
+/* Scrollbar customization for cute look */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
