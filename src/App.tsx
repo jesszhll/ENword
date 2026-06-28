@@ -9,6 +9,7 @@ import {
 import { DinosaurDoodle } from "./components/DinosaurDoodle";
 import { DinosaurCard } from "./components/DinosaurCard";
 import { Confetti } from "./components/Confetti";
+import { VocabularyEditorScreen } from "./components/VocabularyEditorScreen";
 import { 
   Volume2, 
   HelpCircle, 
@@ -21,7 +22,15 @@ import {
   Sparkles, 
   Award,
   ChevronRight,
-  Home
+  Home,
+  Trash2,
+  Play,
+  Check,
+  Eye,
+  EyeOff,
+  Star,
+  ShieldAlert,
+  ArrowLeft
 } from "lucide-react";
 
 // Synthesize satisfying arcade-like game audio effects locally using Web Audio API
@@ -142,6 +151,246 @@ const RETRY_ENCOURAGEMENTS = [
   "敲一敲聪明的小脑袋，词汇能量已经加载99%啦！🧠💡"
 ];
 
+// Helper to adjust typed casing dynamically matching target word
+const adjustCasing = (input: string, correctWord: string): string => {
+  if (!correctWord) return input.toLowerCase();
+  let result = "";
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i];
+    const targetChar = correctWord[i];
+    if (targetChar) {
+      const isTargetUpper = targetChar !== targetChar.toLowerCase() && targetChar === targetChar.toUpperCase();
+      if (isTargetUpper) {
+        result += char.toUpperCase();
+      } else {
+        result += char.toLowerCase();
+      }
+    } else {
+      result += char.toLowerCase();
+    }
+  }
+  return result;
+};
+
+export interface MistakeRecord {
+  id: number;
+  word: VocabularyItem;
+  wrongCount: number;
+  lastTestedTime: number;
+  level: number;
+}
+
+interface MistakeCardProps {
+  record: MistakeRecord;
+  onRemove: (id: number) => void;
+  onCorrectMastered: (id: number) => void;
+  speakWord: (word: string) => void;
+  playSound: (type: "correct" | "incorrect" | "click") => void;
+}
+
+const MistakeCard: React.FC<MistakeCardProps> = ({
+  record,
+  onRemove,
+  onCorrectMastered,
+  speakWord,
+  playSound,
+}) => {
+  const [isSpelling, setIsSpelling] = useState<boolean>(false);
+  const [userInput, setUserInput] = useState<string>("");
+  const [showSpelling, setShowSpelling] = useState<boolean>(false);
+  const [isCorrect, setIsCorrect] = useState<boolean>(false);
+  const [shakeInput, setShakeInput] = useState<boolean>(false);
+  const [wrongCount, setWrongCount] = useState<number>(0);
+
+  const checkInPlace = () => {
+    if (!userInput.trim()) return;
+
+    const normalize = (str: string) => {
+      return str
+        .toLowerCase()
+        .trim()
+        .replace(/['’]/g, "")
+        .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()!]/g, "")
+        .replace(/\s+/g, " ");
+    };
+
+    const normInput = normalize(userInput);
+    const answersToTry = [record.word.english, ...(record.word.alternatives || [])];
+    const isRight = answersToTry.some(ans => {
+      const normAns = normalize(ans);
+      return normAns === normInput || normAns.replace(/\s+/g, "") === normInput.replace(/\s+/g, "");
+    });
+
+    if (isRight) {
+      playSound("correct");
+      setIsCorrect(true);
+      setIsSpelling(false);
+      setShowSpelling(true);
+      setTimeout(() => {
+        onCorrectMastered(record.id);
+      }, 1200);
+    } else {
+      playSound("incorrect");
+      setShakeInput(true);
+      setWrongCount(prev => prev + 1);
+      setTimeout(() => setShakeInput(false), 500);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      checkInPlace();
+    }
+  };
+
+  return (
+    <div 
+      className={`relative rounded-2xl border-4 p-4 flex flex-col justify-between h-64 transition-all duration-300 shadow-sm ${
+        isCorrect 
+          ? "border-[#81C784] bg-gradient-to-br from-white to-[#E8F5E9] shadow-md scale-95" 
+          : isSpelling 
+            ? "border-[#FFB74D] bg-white shadow-md ring-2 ring-[#FFE0B2]" 
+            : "border-[#A5D6A7] bg-white hover:shadow-md hover:-translate-y-1"
+      }`}
+    >
+      <div className="flex justify-between items-center">
+        <span className="text-xs font-extrabold bg-[#E8F5E9] text-[#2E7D32] px-2.5 py-0.5 rounded-full border border-[#81C784]">
+          第 {record.level} 关
+        </span>
+        <span className="text-xs font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full border border-orange-200 flex items-center gap-1">
+          ⚠️ 拼错 {record.wrongCount + wrongCount} 次
+        </span>
+      </div>
+
+      <div className="flex-1 flex flex-col justify-center my-2 text-center">
+        {isCorrect ? (
+          <div className="space-y-1.5 animate-scale-up">
+            <div className="text-xl text-emerald-600 font-bold flex items-center justify-center gap-1">
+              🎉 成功消灭!
+            </div>
+            <p className="text-lg font-extrabold text-[#2E7D32] tracking-widest font-mono">
+              {record.word.english}
+            </p>
+            <p className="text-xs text-slate-500">{record.word.chinese}</p>
+          </div>
+        ) : isSpelling ? (
+          <div className="space-y-3">
+            <p className="text-xs font-bold text-slate-500">
+              请拼写: <span className="text-sm font-black text-[#2E7D32]">{record.word.chinese}</span>
+            </p>
+            <div className="relative">
+              <input
+                type="text"
+                autoFocus
+                placeholder="输入单词..."
+                value={userInput}
+                onChange={(e) => setUserInput(adjustCasing(e.target.value, record.word.english))}
+                onKeyDown={handleKeyDown}
+                className={`w-full text-center font-mono font-bold tracking-wider text-[#2E7D32] border-2 rounded-xl py-1.5 px-3 focus:outline-none text-base transition-all ${
+                  shakeInput 
+                    ? "border-red-500 animate-shake bg-red-50 text-red-700" 
+                    : "border-slate-300 focus:border-[#4CAF50] focus:ring-2 focus:ring-[#C8E6C9]"
+                }`}
+              />
+            </div>
+            {wrongCount > 0 && (
+              <p className="text-[10px] font-bold text-red-500">拼写不正确，再想一想哦！🔍</p>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            <h4 className="text-xl font-black text-slate-800 tracking-tight">
+              {record.word.chinese}
+            </h4>
+            
+            {showSpelling ? (
+              <p className="text-lg font-black text-[#2E7D32] font-mono tracking-widest">
+                {record.word.english}
+              </p>
+            ) : (
+              <p className="text-lg font-bold text-slate-300 font-mono tracking-widest">
+                {"• ".repeat(record.word.english.length)}
+              </p>
+            )}
+
+            {record.word.example && (
+              <p className="text-[11px] text-slate-400 italic max-w-full truncate px-1" title={record.word.example}>
+                {record.word.example.replace(new RegExp(record.word.english, "i"), "_______")}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="border-t border-slate-100 pt-2 flex items-center justify-between gap-1.5">
+        {isCorrect ? (
+          <button
+            onClick={() => { playSound("click"); onRemove(record.id); }}
+            className="w-full py-1.5 bg-[#4CAF50] text-white font-extrabold text-xs rounded-xl hover:bg-[#66BB6A] transition-all flex items-center justify-center gap-1 shadow-sm"
+          >
+            <Check className="w-3.5 h-3.5" /> 移出本题
+          </button>
+        ) : isSpelling ? (
+          <div className="flex w-full gap-1.5">
+            <button
+              onClick={() => { playSound("click"); setIsSpelling(false); }}
+              className="flex-1 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-extrabold text-xs rounded-lg transition-all"
+            >
+              取消
+            </button>
+            <button
+              onClick={checkInPlace}
+              disabled={!userInput.trim()}
+              className={`flex-1 py-1 font-extrabold text-xs rounded-lg transition-all ${
+                userInput.trim() 
+                  ? "bg-[#4CAF50] text-white hover:bg-[#66BB6A]" 
+                  : "bg-slate-200 text-slate-400 cursor-not-allowed"
+              }`}
+            >
+              提交
+            </button>
+          </div>
+        ) : (
+          <div className="flex w-full justify-between items-center gap-1">
+            <div className="flex gap-1">
+              <button
+                onClick={() => { playSound("click"); speakWord(record.word.english); }}
+                className="p-1.5 bg-[#E8F5E9] hover:bg-[#C8E6C9] text-[#2E7D32] rounded-lg transition-all border border-[#81C784]"
+                title="听发音"
+              >
+                <Volume2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => { playSound("click"); setShowSpelling(!showSpelling); }}
+                className="p-1.5 bg-[#FFF9C4] hover:bg-[#FFF59D] text-[#F57F17] rounded-lg transition-all border border-[#FBC02D]"
+                title={showSpelling ? "隐藏答案" : "偷偷看一眼"}
+              >
+                {showSpelling ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+
+            <div className="flex gap-1 items-center">
+              <button
+                onClick={() => { playSound("click"); onRemove(record.id); }}
+                className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                title="从错题本中移除"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => { playSound("click"); setIsSpelling(true); setUserInput(""); }}
+                className="px-2.5 py-1.5 bg-[#4CAF50] hover:bg-[#66BB6A] text-white font-extrabold text-xs rounded-lg shadow-sm transition-all flex items-center gap-1"
+              >
+                ✍️ 拼写
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 export default function App() {
   // Game Navigation States
   // 'start': Welcome & Level Select map
@@ -149,7 +398,26 @@ export default function App() {
   // 'correct_modal': Big Pop-up Celebration modal for correct answer
   // 'level_completed': Finished a level, show confetti and reward card reveal
   // 'album': Interactive badges/cards album book
-  const [gameState, setGameState] = useState<"start" | "playing" | "correct_modal" | "level_completed" | "album">("start");
+  // 'vocabulary_editor': Administrator settings panel to edit/correct words
+  const [gameState, setGameState] = useState<"start" | "playing" | "correct_modal" | "level_completed" | "album" | "mistakes" | "vocabulary_editor">("start");
+
+  // Custom Vocabulary State (to correct/add spelling alternatives)
+  const [vocabData, setVocabData] = useState<VocabularyItem[]>(() => {
+    const saved = localStorage.getItem("dino_custom_vocabulary");
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error("Error reading custom vocabulary", e);
+      }
+    }
+    return VOCABULARY_DATA;
+  });
+
+  const saveCustomVocabulary = (newVocab: VocabularyItem[]) => {
+    setVocabData(newVocab);
+    localStorage.setItem("dino_custom_vocabulary", JSON.stringify(newVocab));
+  };
 
   // Game Progress States
   const [currentLevel, setCurrentLevel] = useState<number>(1);
@@ -164,6 +432,10 @@ export default function App() {
   const [dinoState, setDinoState] = useState<"idle" | "thinking" | "correct" | "incorrect">("idle");
   const [shakeInput, setShakeInput] = useState<boolean>(false);
 
+  // Mistakes Module States
+  const [mistakes, setMistakes] = useState<MistakeRecord[]>([]);
+  const [showMistakesVictory, setShowMistakesVictory] = useState<boolean>(false);
+
   // Hints States
   const [hintLevel, setHintLevel] = useState<number>(0); // 0: none, 1: blanked sentence, 2: first + last letters, 3: reveal half
 
@@ -173,6 +445,7 @@ export default function App() {
   const [randomRetryMsg, setRandomRetryMsg] = useState<string>("");
   const [isNewCardClaimed, setIsNewCardClaimed] = useState<boolean>(false);
   const [selectedAlbumCard, setSelectedAlbumCard] = useState<RewardCard | null>(null);
+  const [isFailedAnswer, setIsFailedAnswer] = useState<boolean>(false);
 
   // References
   const inputRef = useRef<HTMLInputElement>(null);
@@ -187,11 +460,24 @@ export default function App() {
         console.error("Error reading unlocked levels", e);
       }
     }
+    const savedMistakes = localStorage.getItem("dino_mistakes");
+    if (savedMistakes) {
+      try {
+        setMistakes(JSON.parse(savedMistakes));
+      } catch (e) {
+        console.error("Error reading saved mistakes", e);
+      }
+    }
   }, []);
 
   const saveUnlockedLevels = (levels: number[]) => {
     setUnlockedLevels(levels);
     localStorage.setItem("dino_unlocked_levels", JSON.stringify(levels));
+  };
+
+  const saveMistakes = (newMistakes: MistakeRecord[]) => {
+    setMistakes(newMistakes);
+    localStorage.setItem("dino_mistakes", JSON.stringify(newMistakes));
   };
 
   // Helper to trigger confetti safely
@@ -205,7 +491,13 @@ export default function App() {
   // Select a level to play
   const startLevel = (lvlNum: number) => {
     playSound("click");
-    const words = getWordsForLevel(lvlNum);
+    // Dynamically slice the up-to-date custom vocabData
+    const getLocalWordsForLevel = (level: number) => {
+      const startIndex = level <= 5 ? (level - 1) * 15 : 75 + (level - 6) * 16;
+      const count = level <= 5 ? 15 : 16;
+      return vocabData.slice(startIndex, startIndex + count);
+    };
+    const words = getLocalWordsForLevel(lvlNum);
     setCurrentLevel(lvlNum);
     setCurrentWords(words);
     setCurrentWordIndex(0);
@@ -214,9 +506,33 @@ export default function App() {
     setHintLevel(0);
     setStreak(0);
     setDinoState("idle");
+    setIsFailedAnswer(false);
     setGameState("playing");
     
     // Auto-pronounce the first word when level loads to establish auditory stimulus
+    setTimeout(() => {
+      speakWord(words[0].english);
+    }, 600);
+  };
+
+  // Start the 错题大挑战 (Mistakes Challenge Mode)
+  const startMistakesChallenge = () => {
+    playSound("click");
+    if (mistakes.length === 0) return;
+    
+    // Dynamically retrieve the corrected spellings for mistake entries
+    const words = mistakes.map(m => vocabData.find(v => v.id === m.id) || m.word);
+    setCurrentLevel(-1); // -1 signifies mistakes mode
+    setCurrentWords(words);
+    setCurrentWordIndex(0);
+    setUserInput("");
+    setWrongTriesCount(0);
+    setHintLevel(0);
+    setStreak(0);
+    setDinoState("idle");
+    setIsFailedAnswer(false);
+    setGameState("playing");
+
     setTimeout(() => {
       speakWord(words[0].english);
     }, 600);
@@ -260,10 +576,14 @@ export default function App() {
 
     const normInput = normalize(userInput);
     const answersToTry = [activeWord.english, ...(activeWord.alternatives || [])];
-    const isCorrectAnswer = answersToTry.some(ans => normalize(ans) === normInput);
+    const isCorrectAnswer = answersToTry.some(ans => {
+      const normAns = normalize(ans);
+      return normAns === normInput || normAns.replace(/\s+/g, "") === normInput.replace(/\s+/g, "");
+    });
 
     if (isCorrectAnswer) {
       // 🏆 CORRECT ACTION!
+      setIsFailedAnswer(false);
       playSound("correct");
       setDinoState("correct");
       setStreak((prev) => prev + 1);
@@ -281,10 +601,34 @@ export default function App() {
       // ❌ INCORRECT ACTION
       playSound("incorrect");
       setDinoState("incorrect");
-      setWrongTriesCount((prev) => prev + 1);
+      const nextWrongCount = wrongTriesCount + 1;
+      setWrongTriesCount(nextWrongCount);
       setStreak(0);
       setShakeInput(true);
       setTimeout(() => setShakeInput(false), 500);
+
+      // Record the mistake
+      const existing = mistakes.find(m => m.id === activeWord.id);
+      let updatedMistakes: MistakeRecord[];
+      if (existing) {
+        updatedMistakes = mistakes.map(m => 
+          m.id === activeWord.id 
+            ? { ...m, wrongCount: m.wrongCount + 1, lastTestedTime: Date.now() }
+            : m
+        );
+      } else {
+        updatedMistakes = [
+          ...mistakes,
+          {
+            id: activeWord.id,
+            word: activeWord,
+            wrongCount: 1,
+            lastTestedTime: Date.now(),
+            level: currentLevel === -1 ? 1 : currentLevel
+          }
+        ];
+      }
+      saveMistakes(updatedMistakes);
 
       // Choose a random retry encouragement
       const retryMsg = RETRY_ENCOURAGEMENTS[Math.floor(Math.random() * RETRY_ENCOURAGEMENTS.length)];
@@ -294,6 +638,19 @@ export default function App() {
       setTimeout(() => {
         setDinoState("idle");
       }, 3000);
+
+      // 3-strike bypass check
+      if (nextWrongCount >= 3) {
+        setIsFailedAnswer(true);
+        setRandomSuccessMsg("别灰心！正确答案已经为你准备好啦，让我们一起记住它！🦖💡");
+        // Automatically speak word
+        speakWord(activeWord.english);
+        // Put correct spelling into input
+        setUserInput(activeWord.english);
+        setTimeout(() => {
+          setGameState("correct_modal");
+        }, 1200);
+      }
     }
   };
 
@@ -305,9 +662,26 @@ export default function App() {
     setUserInput("");
     setWrongTriesCount(0);
 
+    // If in mistakes challenge, and they didn't fail (meaning they successfully spelled it)
+    if (currentLevel === -1 && !isFailedAnswer) {
+      const updated = mistakes.filter(m => m.id !== activeWord.id);
+      saveMistakes(updated);
+    }
+
+    setIsFailedAnswer(false);
+
     const isLastWordOfLevel = currentWordIndex >= currentWords.length - 1;
 
     if (isLastWordOfLevel) {
+      if (currentLevel === -1) {
+        // 🎉 MISTAKES CHALLENGE FULLY COMPLETED!
+        playSound("victory");
+        triggerConfettiDuration(6000);
+        setShowMistakesVictory(true);
+        setGameState("mistakes");
+        return;
+      }
+
       // 🎉 LEVEL COMPLETED!
       playSound("victory");
       
@@ -369,46 +743,57 @@ export default function App() {
     const wordParts = standardWord.split(" ");
     
     return (
-      <div className="flex flex-wrap justify-center gap-4 mt-3">
+      <div className="flex flex-wrap justify-center items-center gap-4 mt-3">
         {wordParts.map((part, pIdx) => {
           const chars = part.split("");
           return (
-            <div key={pIdx} className="flex gap-1.5 md:gap-2">
-              {chars.map((char, cIdx) => {
-                // Determine what to display
-                const isPunctuation = /[.,'’\-!?]/.test(char);
-                let displayChar = "";
+            <React.Fragment key={pIdx}>
+              {pIdx > 0 && (
+                <div 
+                  className="w-10 h-11 md:w-14 md:h-16 rounded-xl border-2 border-dashed border-orange-300 bg-orange-50/50 flex flex-col items-center justify-center text-xs font-black text-orange-600 shadow-sm animate-pulse" 
+                  title="这里是一个空格 (Space)"
+                >
+                  <span>␣</span>
+                  <span className="text-[10px] scale-90">空格</span>
+                </div>
+              )}
+              <div className="flex gap-1.5 md:gap-2">
+                {chars.map((char, cIdx) => {
+                  // Determine what to display
+                  const isPunctuation = /[.,'’\-!?]/.test(char);
+                  let displayChar = "";
 
-                // If hintLevel >= 2, reveal first & last letters
-                const isFirst = cIdx === 0 && pIdx === 0;
-                const isLast = pIdx === wordParts.length - 1 && cIdx === chars.length - 1;
+                  // If hintLevel >= 2, reveal first & last letters
+                  const isFirst = cIdx === 0 && pIdx === 0;
+                  const isLast = pIdx === wordParts.length - 1 && cIdx === chars.length - 1;
 
-                if (isPunctuation) {
-                  displayChar = char;
-                } else if (hintLevel >= 2 && (isFirst || isLast)) {
-                  displayChar = char;
-                } else if (hintLevel >= 3 && (cIdx % 2 === 0)) {
-                  // reveal every other char
-                  displayChar = char;
-                }
+                  if (isPunctuation) {
+                    displayChar = char;
+                  } else if (hintLevel >= 2 && (isFirst || isLast)) {
+                    displayChar = char;
+                  } else if (hintLevel >= 3 && (cIdx % 2 === 0)) {
+                    // reveal every other char
+                    displayChar = char;
+                  }
 
-                return (
-                  <div 
-                    key={cIdx} 
-                    className={`w-10 h-11 md:w-14 md:h-16 rounded-xl flex flex-col items-center justify-center font-bold text-lg md:text-2xl transition-all shadow-sm ${
-                      isPunctuation 
-                        ? "border-transparent bg-transparent text-slate-500" 
-                        : "border-2 border-slate-300 bg-slate-50 text-emerald-700"
-                    }`}
-                  >
-                    <span>{displayChar}</span>
-                    {!isPunctuation && (
-                      <div className="w-6 h-0.5 md:w-8 bg-slate-400 mt-0.5 rounded-full"></div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                  return (
+                    <div 
+                      key={cIdx} 
+                      className={`w-10 h-11 md:w-14 md:h-16 rounded-xl flex flex-col items-center justify-center font-bold text-lg md:text-2xl transition-all shadow-sm ${
+                        isPunctuation 
+                          ? "border-transparent bg-transparent text-slate-500" 
+                          : "border-2 border-slate-300 bg-slate-50 text-emerald-700"
+                      }`}
+                    >
+                      <span>{displayChar}</span>
+                      {!isPunctuation && (
+                        <div className="w-6 h-0.5 md:w-8 bg-slate-400 mt-0.5 rounded-full"></div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </React.Fragment>
           );
         })}
       </div>
@@ -450,6 +835,22 @@ export default function App() {
 
           <div className="flex gap-2">
             <button
+              id="nav-mistakes-btn"
+              onClick={() => { playSound("click"); setGameState("mistakes"); }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-extrabold text-sm border-2 border-[#E65100] transition-all relative ${
+                gameState === "mistakes" 
+                  ? "bg-[#E65100] text-white shadow-[2px_2px_0px_#BF360C]" 
+                  : "bg-[#FFF3E0] hover:bg-[#FFE0B2] text-[#E65100] shadow-[2px_2px_0px_#FFB74D]"
+              }`}
+            >
+              📖 错题本
+              {mistakes.length > 0 && (
+                <span className="absolute -top-2.5 -right-1.5 bg-[#D84315] text-white rounded-full px-1.5 py-0.5 text-[9px] font-black border-2 border-white shadow-sm animate-pulse">
+                  {mistakes.length}
+                </span>
+              )}
+            </button>
+            <button
               id="nav-album-btn"
               onClick={() => { playSound("click"); setGameState("album"); }}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-extrabold text-sm border-2 border-[#81C784] transition-all ${
@@ -458,7 +859,18 @@ export default function App() {
                   : "bg-[#E8F5E9] hover:bg-[#C8E6C9] text-[#2E7D32] shadow-[2px_2px_0px_#81C784]"
               }`}
             >
-              🏆 恐龙卡牌包
+              🏆 卡牌包
+            </button>
+            <button
+              id="nav-vocab-editor-btn"
+              onClick={() => { playSound("click"); setGameState("vocabulary_editor"); }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-extrabold text-sm border-2 border-[#0097A7] transition-all ${
+                gameState === "vocabulary_editor" 
+                  ? "bg-[#0097A7] text-white shadow-[2px_2px_0px_#006064]" 
+                  : "bg-[#E0F7FA] hover:bg-[#B2EBF2] text-[#006064] shadow-[2px_2px_0px_#0097A7]"
+              }`}
+            >
+              🔧 答案库
             </button>
             {gameState !== "start" && (
               <button
@@ -467,7 +879,7 @@ export default function App() {
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FFF9C4] hover:bg-[#FFF59D] text-[#F57F17] font-extrabold text-sm border-2 border-[#FBC02D] rounded-xl shadow-[2px_2px_0px_#FBC02D] transition-all"
               >
                 <Home className="w-4 h-4" />
-                关卡地图
+                地图
               </button>
             )}
           </div>
@@ -511,6 +923,22 @@ export default function App() {
                     className="bg-white hover:bg-[#E8F5E9] text-[#2E7D32] font-extrabold px-6 py-3 rounded-2xl border-2 border-[#81C784] text-sm shadow-[4px_4px_0px_#81C784] hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all flex items-center gap-1.5"
                   >
                     🏆 浏览卡牌收集 ({unlockedLevels.length - 1}/10)
+                  </button>
+                  {mistakes.length > 0 && (
+                    <button
+                      id="view-mistakes-landing-btn"
+                      onClick={() => setGameState("mistakes")}
+                      className="bg-[#FFF3E0] hover:bg-[#FFE0B2] text-[#E65100] font-extrabold px-6 py-3 rounded-2xl border-2 border-[#FFB74D] text-sm shadow-[4px_4px_0px_#FFB74D] hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all flex items-center gap-1.5"
+                    >
+                      📖 错题复习 ({mistakes.length})
+                    </button>
+                  )}
+                  <button
+                    id="view-vocab-editor-landing-btn"
+                    onClick={() => { playSound("click"); setGameState("vocabulary_editor"); }}
+                    className="bg-[#E0F7FA] hover:bg-[#B2EBF2] text-[#006064] font-extrabold px-6 py-3 rounded-2xl border-2 border-[#4DD0E1] text-sm shadow-[4px_4px_0px_#4DD0E1] hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all flex items-center gap-1.5"
+                  >
+                    🔧 答案库修正
                   </button>
                 </div>
               </div>
@@ -721,19 +1149,14 @@ export default function App() {
                       autoFocus
                       placeholder="在这里输入英文单词..."
                       value={userInput}
-                      onChange={(e) => setUserInput(e.target.value)}
+                      onChange={(e) => setUserInput(adjustCasing(e.target.value, activeWord.english))}
                       onKeyDown={handleKeyDown}
-                      className={`w-full bg-white rounded-3xl border-b-8 text-center font-mono font-black text-3xl md:text-5xl uppercase tracking-widest text-[#2E7D32] placeholder-[#C8E6C9] p-6 focus:outline-none transition-all shadow-xl ${
+                      className={`w-full bg-white rounded-3xl border-b-8 text-center font-mono font-black text-3xl md:text-5xl tracking-widest text-[#2E7D32] placeholder-[#C8E6C9] p-6 focus:outline-none transition-all shadow-xl ${
                         shakeInput 
                           ? "border-red-500 animate-shake bg-red-50 text-red-700" 
                           : "border-[#A5D6A7] focus:border-[#4CAF50] focus:ring-4 focus:ring-[#C8E6C9]"
                       }`}
                     />
-
-                    {/* Word characters meter */}
-                    <div className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-[#2E7D32] bg-[#E8F5E9] px-2 py-1 rounded-lg">
-                      {userInput.trim().length} 字母
-                    </div>
                   </div>
 
                   {/* Interactive hint display details */}
@@ -749,7 +1172,7 @@ export default function App() {
                   <div className="bg-white px-8 py-4 rounded-2xl shadow-lg border-2 border-[#FFCCBC] relative animate-pulse text-center">
                     <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-6 h-6 bg-white border-t-2 border-l-2 border-[#FFCCBC] rotate-45"></div>
                     <p className="text-[#D84315] font-black text-lg md:text-xl italic">
-                      "拼写有误，{randomRetryMsg} (共 {activeWord.english.length} 个字母) "
+                      "拼写有误，{randomRetryMsg}"
                     </p>
                   </div>
                 )}
@@ -804,9 +1227,15 @@ export default function App() {
               <div className="absolute bottom-6 left-12 text-2xl opacity-40">🦖</div>
 
               <div className="flex justify-center">
-                <div className="w-20 h-20 rounded-full bg-[#E8F5E9] border-4 border-[#4CAF50] flex items-center justify-center animate-bounce">
-                  <CheckCircle className="w-12 h-12 text-[#4CAF50]" />
-                </div>
+                {isFailedAnswer ? (
+                  <div className="w-20 h-20 rounded-full bg-[#FFE0B2] border-4 border-[#FFB74D] flex items-center justify-center animate-bounce">
+                    <HelpCircle className="w-12 h-12 text-[#E65100]" />
+                  </div>
+                ) : (
+                  <div className="w-20 h-20 rounded-full bg-[#E8F5E9] border-4 border-[#4CAF50] flex items-center justify-center animate-bounce">
+                    <CheckCircle className="w-12 h-12 text-[#4CAF50]" />
+                  </div>
+                )}
               </div>
 
               {/* Changing encouragement message */}
@@ -815,14 +1244,14 @@ export default function App() {
                   {randomSuccessMsg}
                 </h2>
                 <p className="text-sm font-bold text-[#558B2F] uppercase tracking-widest italic">
-                  拼写正确 Perfect Match!
+                  {isFailedAnswer ? "学习模式 Study Mode" : "拼写正确 Perfect Match!"}
                 </p>
               </div>
 
               {/* Correct English word details card */}
               <div className="bg-[#F1F8E9] border-4 border-[#A5D6A7] p-4 rounded-2xl space-y-3">
                 <div className="flex items-center justify-center gap-2">
-                  <span className="text-3xl font-black text-[#2E7D32] uppercase tracking-widest">
+                  <span className="text-3xl font-black text-[#2E7D32] tracking-widest">
                     {activeWord.english}
                   </span>
                   <button
@@ -997,6 +1426,135 @@ export default function App() {
               </div>
             )}
           </div>
+        )}
+
+        {/* ======================= STATE 6: MISTAKES (Mistake Notebook Review) ======================= */}
+        {gameState === "mistakes" && (
+          <div className="space-y-6 animate-fade-in text-left">
+            {/* Header section */}
+            <div className="flex flex-col sm:flex-row items-center justify-between border-b-4 border-[#FFB74D] pb-4 gap-4">
+              <div className="space-y-1 text-center sm:text-left">
+                <h2 className="text-3xl font-black text-[#E65100] tracking-tight flex items-center justify-center sm:justify-start gap-2">
+                  📖 单词错题本
+                </h2>
+                <p className="text-sm text-[#E65100]/80 font-bold">
+                  闯关中拼错的单词会自动记在这里，让我们和小恐龙一起消灭它们吧！🦕🐾
+                </p>
+              </div>
+
+              <div className="flex gap-2">
+                {mistakes.length > 0 && (
+                  <button
+                    onClick={startMistakesChallenge}
+                    className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-extrabold px-5 py-2.5 rounded-2xl border-2 border-orange-600 text-sm shadow-[2px_2px_0px_#BF360C] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all flex items-center gap-1.5"
+                  >
+                    ⚔️ 错题消灭大挑战
+                  </button>
+                )}
+                <button
+                  onClick={() => { playSound("click"); setGameState("start"); }}
+                  className="bg-[#FFF9C4] hover:bg-[#FFF59D] text-[#F57F17] font-extrabold px-5 py-2.5 rounded-2xl border-2 border-[#FBC02D] text-sm shadow-[2px_2px_0px_#FBC02D] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all"
+                >
+                  ⬅️ 返回关卡地图
+                </button>
+              </div>
+            </div>
+
+            {/* Empty State */}
+            {mistakes.length === 0 ? (
+              <div className="bg-white border-4 border-[#81C784] rounded-3xl p-10 text-center max-w-md mx-auto space-y-4 shadow-sm my-12 animate-scale-up">
+                <div className="text-7xl">🦖💤</div>
+                <h3 className="text-2xl font-black text-[#2E7D32]">错题本空空如也！</h3>
+                <p className="text-sm text-slate-500 font-bold leading-relaxed">
+                  小恐龙高兴地在绿油油的草地上打滚！你在闯关中拼写得非常完美，暂时没有需要复习的错题哦，继续保持吧！🌿✨
+                </p>
+                <button
+                  onClick={() => { playSound("click"); setGameState("start"); }}
+                  className="w-full bg-[#4CAF50] hover:bg-[#66BB6A] text-white font-extrabold py-3 rounded-2xl shadow-md border-b-4 border-[#2E7D32] transition-all"
+                >
+                  开启单词大闯关
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Stats & Actions */}
+                <div className="bg-orange-50 border-2 border-[#FFB74D] rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 text-sm font-bold text-orange-800">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">📊</span>
+                    <span>
+                      你目前有 <strong className="text-orange-600 text-lg">{mistakes.length}</strong> 个单词写错过。点击卡片上的 <strong className="text-[#2E7D32]">✍️ 拼写</strong> 只要写对 1 次就能把它们消灭哦！
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (confirm("确定要清空全部错题记录吗？这一步不能撤销哦。")) {
+                        playSound("click");
+                        saveMistakes([]);
+                      }
+                    }}
+                    className="text-xs text-orange-600 hover:text-red-500 border border-orange-200 hover:bg-orange-100/50 px-2.5 py-1.5 rounded-xl transition-all w-max self-end md:self-auto"
+                  >
+                    🗑️ 全部清空
+                  </button>
+                </div>
+
+                {/* Grid layout of mistake cards */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {mistakes.map((record) => {
+                    const freshWord = vocabData.find(v => v.id === record.id) || record.word;
+                    const resolvedRecord = { ...record, word: freshWord };
+                    return (
+                      <MistakeCard
+                        key={record.id}
+                        record={resolvedRecord}
+                        onRemove={(id) => {
+                          const updated = mistakes.filter((m) => m.id !== id);
+                          saveMistakes(updated);
+                        }}
+                        onCorrectMastered={(id) => {
+                          const updated = mistakes.filter((m) => m.id !== id);
+                          saveMistakes(updated);
+                        }}
+                        speakWord={speakWord}
+                        playSound={playSound}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Mistakes Victory Celebration Overlay */}
+            {showMistakesVictory && (
+              <div className="fixed inset-0 bg-emerald-950/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
+                <div className="bg-white border-8 border-[#81C784] rounded-3xl p-6 md:p-8 max-w-sm text-center shadow-2xl relative overflow-hidden animate-scale-up space-y-4">
+                  <div className="absolute -top-10 -right-10 text-7xl opacity-15">🦖</div>
+                  <div className="text-6xl animate-bounce">👑✨</div>
+                  <h3 className="text-2xl font-black text-emerald-800">错题消灭大胜利！</h3>
+                  <p className="text-sm text-slate-500 font-bold leading-relaxed">
+                    太牛啦！你刚刚在挑战模式中，把刚才拼错的单词全部都拼正确了！小恐龙兴奋地为你戴上了胜利之冠！👑🎉
+                  </p>
+                  <button
+                    onClick={() => { playSound("click"); setShowMistakesVictory(false); }}
+                    className="w-full py-3 bg-[#4CAF50] hover:bg-[#66BB6A] text-white font-extrabold rounded-2xl shadow-md border-b-4 border-[#2E7D32] transition-all"
+                  >
+                    太棒了，继续复习！
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ======================= STATE 6: VOCABULARY DATABASE EDITOR ======================= */}
+        {gameState === "vocabulary_editor" && (
+          <VocabularyEditorScreen
+            vocabData={vocabData}
+            onSave={(updatedVocab) => saveCustomVocabulary(updatedVocab)}
+            onBack={() => setGameState("start")}
+            playSound={playSound}
+            defaultVocab={VOCABULARY_DATA}
+          />
         )}
 
       </main>
